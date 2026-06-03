@@ -164,13 +164,13 @@ def main(args_eval, resume_preempt=False):
         wide_SiLU=wide_SiLU,
         use_sdpa=use_sdpa,
         is_mae=is_mae)
-    
+
     if not is_mae:
         target_encoder.eval()
         predictor.eval()
         for p in target_encoder.parameters():
             p.requires_grad = False
-        
+
         for p in predictor.parameters():
             p.requires_grad = False
 
@@ -220,7 +220,7 @@ def main(args_eval, resume_preempt=False):
                     patch_size=patch_size,
                     resolution=resolution,
                     normalize_targets=normalize_targets)
-                
+
                 all_losses = batch_all_gather(all_losses).cpu()
                 all_labels = batch_all_gather(all_labels).cpu()
 
@@ -232,7 +232,7 @@ def main(args_eval, resume_preempt=False):
                                 "labels":all_labels,
                                 },
                                 os.path.join(folder, f'losses_{block}_{frame_step}fs_{"_".join([str(ctxt) for ctxt in all_context_lengths])}ctxt.pth'))
-            
+
             if mode in ['metrics','all']:
                 logger.info(f"Computing metrics ...")
                 if mode == "metrics":
@@ -251,20 +251,20 @@ def main(args_eval, resume_preempt=False):
                                 ('%s', 'Context length(s)'),
                                 ('%d', 'Frame skip'),
                                 *[('%.5f', key) for key in keys],
-                                    delim=';',) 
+                                    delim=';',)
                         init_logger = False
                     if rank == 0:
                         # Weguarantee that the order is the same as before, rather than using .values()
                         csv_logger.log(block,context,frame_step,*[metrics[key] for key in keys])
-                        
+
 
                 filtered = all_losses.min(1)[0]
                 metrics = compute_metrics(filtered,all_labels)
                 if rank == 0:
                     csv_logger.log(block,"Filtered",frame_step,*[metrics[key] for key in keys])
-            
-            
-        
+
+
+
 
 
 
@@ -301,7 +301,7 @@ def compute_metrics(losses,labels):
         accs.append(((data1 < thresh).sum() + (data2 > thresh).sum())/ (data1.shape[0] + data1.shape[0]))
     best_accuracy_abs = torch.max(torch.Tensor(accs))*100
     oracle_thresh = threshs[torch.argmax(torch.Tensor(accs))]
-    
+
     metrics["Best Absolute Accuracy (max)"] = best_accuracy_abs
     metrics["Best Classifier threhshold"] = oracle_thresh
     # AUPRC
@@ -353,11 +353,11 @@ def extract_losses(
     print(context_lengths)
 
     sampling_rate,num_frames = frame_step ,99//frame_step
-    
+
     print(f"Sampling rate 1/{sampling_rate} frames")
 
     if dataset == "intphys":
-        data_name = f"IntPhys-dev-{block}" 
+        data_name = f"IntPhys-dev-{block}"
     elif dataset == "grasp":
         data_name = f'GRASP-level-2'
     elif dataset == 'inflevel_lab':
@@ -415,7 +415,7 @@ def extract_losses(
 
         B, C, T, H, W = pieces.shape
 
-        
+
         all_losses_ctxt = []
         for CTXT_LEN in context_lengths:
 
@@ -423,7 +423,7 @@ def extract_losses(
             full_m = full_m.unsqueeze(0).to(device)
             m = m.unsqueeze(0).to(device)
             m_ = m_.unsqueeze(0).to(device)
-            
+
             if is_mae:
                 masks_enc = m.repeat(B, 1)
                 masks_pred = m_.repeat(B, 1)
@@ -434,7 +434,7 @@ def extract_losses(
                 full_mask = [full_m.repeat(B, 1)]
 
             with torch.cuda.amp.autocast(dtype=torch.float16, enabled=use_bfloat16):
-                if is_mae: 
+                if is_mae:
                     if mae_decoder_blocks == -1:
                         mean = torch.as_tensor((0.485, 0.456, 0.406)).to(device)[None, :, None, None, None]
                         std = torch.as_tensor((0.229, 0.224, 0.225)).to(device)[None, :, None, None, None]
@@ -454,11 +454,10 @@ def extract_losses(
                         targets = targets[masks_pred].reshape(B, -1, C)
 
                     preds = encoder(pieces,masks_pred,decoder_blocks=mae_decoder_blocks)
-                  
+
                     preds = preds.view(num_videos,-1,*preds.shape[1:])
-                    preds = torch.zeros_like(preds,device=preds.device)
                     targets = targets.view(num_videos,-1,*targets.shape[1:])
-                    
+
 
                 else:
                     h = target_encoder(pieces,full_mask)[0]
@@ -498,7 +497,7 @@ def extract_losses(
     max_length = torch.tensor([max(lengths)]).to(device)
     #We need to sync the max lengths otherwise we can't gather the losses afterwards
     dist.all_reduce(max_length, op=dist.ReduceOp.MAX)
-    
+
     all_losses = torch.concat(pad_tensors(all_losses,max_length.item()))
     all_labels = torch.concat(all_labels)
 
@@ -600,7 +599,7 @@ def init_model(
     is_mae=False,
 ):
     if is_mae:
-        
+
         encoder = videomae.__dict__[model_name]()
             #decoder_depth=pred_depth
         target_encoder = None
@@ -646,7 +645,7 @@ def init_model(
         )
         predictor = PredictorMultiMaskWrapper(predictor)
 
-        
+
         predictor.to(device)
         target_encoder.to(device)
 
