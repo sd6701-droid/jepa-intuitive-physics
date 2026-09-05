@@ -38,6 +38,19 @@
 
 set -euo pipefail
 
+# A batch job gets a non-interactive shell: no conda, and ~/.local/bin (where
+# `pip install --user` puts gdown) is off PATH. Restore both before anything
+# checks for gdown.
+export PATH="$HOME/.local/bin:$PATH"
+for CONDA_SH in "$HOME/miniconda3/etc/profile.d/conda.sh" \
+                "/scratch/$USER/miniconda3/etc/profile.d/conda.sh"; do
+  if [[ -f "$CONDA_SH" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONDA_SH" && conda activate base || true
+    break
+  fi
+done
+
 DATA_ROOT="${INTPHYS_DATA_ROOT:-/scratch/sd6701/datasets}"
 STAGE="$DATA_ROOT/.staging"
 KEEP_ARCHIVES="${KEEP_ARCHIVES:-0}"   # 1 = keep tarballs after extraction
@@ -111,7 +124,11 @@ case "$UNIT" in
     if [[ "$NDIRS" -ge 32 ]]; then
       echo "GRASP already assembled: $NDIRS dirs in $L2"
     else
-      command -v gdown >/dev/null 2>&1 || { echo "gdown missing: pip install --user gdown"; exit 1; }
+      if ! command -v gdown >/dev/null 2>&1; then
+        echo "gdown not on PATH. python=$(command -v python) PATH=$PATH"
+        echo "fix: pip install --user gdown   (then resubmit)"
+        exit 1
+      fi
       mkdir -p "$SRC"
       # Drive throttles folder pulls; gdown resumes, so just retry the whole call.
       for attempt in 1 2 3 4 5; do
