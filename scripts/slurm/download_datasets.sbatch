@@ -126,45 +126,47 @@ case "$UNIT" in
 
   grasp)
     # Drive folder: https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M
-    # NOTE: videos.zip in that folder ships level1 ONLY (ColorBlack, ShapeBall,
-    # ...). This eval needs level2 (Collision, Continuity, Gravity, ...), whose
-    # clips live in the sibling P_*/IP_* Drive subfolders, so the whole folder
-    # has to be mirrored and then reassembled into GRASP/level2/.
+    # videos.zip is the pre-generated benchmark (github.com/i-machine-think/grasp):
+    # level1/ is basic visual understanding, level2/ is the intuitive-physics set
+    # this eval reads -- 16 properties x (128 possible + 128 impossible) = 4096 mp4.
+    # Do NOT use the folder's examples/ dir (one clip per property) or build.zip
+    # (Unity scenes for regenerating videos); neither is the benchmark.
     L2="$DATA_ROOT/GRASP/level2"
-    SRC="$DATA_ROOT/GRASP/drive_root"
-    NDIRS=$(n_subdirs "$L2")
-    if [[ "$NDIRS" -ge 32 ]]; then
-      echo "GRASP already assembled: $NDIRS dirs in $L2"
-    else
-      if ! command -v gdown >/dev/null 2>&1; then
-        echo "gdown not on PATH. python=$(command -v python) PATH=$PATH"
-        echo "fix: pip install --user gdown   (then resubmit)"
-        exit 1
-      fi
-      mkdir -p "$SRC"
-      # Drive throttles folder pulls; gdown resumes, so just retry the whole call.
-      for attempt in 1 2 3 4 5; do
-        echo "--- gdown attempt $attempt ---"
-        gdown --folder -O "$SRC" \
-          https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M && break
-        echo "attempt $attempt failed, sleeping 120s"; sleep 120
-      done
-
-      # Collect the property dirs wherever gdown nested them and flatten to level2/.
-      mkdir -p "$L2"
-      mapfile -t PDIRS < <(find "$SRC" -maxdepth 4 -type d \( -name 'P_*' -o -name 'IP_*' \) | sort)
-      echo "found ${#PDIRS[@]} property dirs under $SRC"
-      for d in "${PDIRS[@]}"; do
-        [[ -d "$L2/$(basename "$d")" ]] || mv "$d" "$L2/"
-      done
-
-      # level1 and the zips are not used by evals/intuitive_physics.
-      rm -rf "$SRC" "$DATA_ROOT/GRASP/videos"
-      NDIRS=$(n_subdirs "$L2")
-    fi
+    ZIP="$DATA_ROOT/GRASP/videos.zip"
+    EXPECT_MP4=4096
     NMP4=$(n_files "$L2" '*.mp4')
-    echo "GRASP: $NDIRS dirs, $NMP4 mp4 in $L2"
-    [[ "$NDIRS" -ge 32 ]] || { echo "expected 32 dirs (16 P_ + 16 IP_)"; exit 1; }
+    if [[ "$NMP4" -ge "$EXPECT_MP4" ]]; then
+      echo "GRASP already installed: $NMP4 mp4 in $L2"
+    else
+      [[ "$NMP4" -eq 0 ]] || { echo "removing incomplete level2 ($NMP4 mp4)"; rm -rf "$L2"; }
+      if [[ ! -f "$ZIP" ]]; then
+        command -v gdown >/dev/null 2>&1 || {
+          echo "gdown not on PATH. python=$(command -v python) PATH=$PATH"; exit 1; }
+        for attempt in 1 2 3; do
+          echo "--- gdown videos.zip attempt $attempt ---"
+          gdown 1_xPzN0MS3vVlci4yHL5FBH8N_ZpL6mt8 -O "$ZIP" && break
+          echo "attempt $attempt failed, sleeping 120s"; sleep 120
+        done
+      fi
+      [[ -f "$ZIP" ]] || { echo "videos.zip not present, cannot continue"; exit 1; }
+
+      unzip -q -o "$ZIP" -d "$DATA_ROOT/GRASP"
+      # The zip nests as videos/level{1,2}; hoist level2 to where utils.py looks.
+      if [[ -d "$DATA_ROOT/GRASP/videos/level2" ]]; then
+        rm -rf "$L2"
+        mv "$DATA_ROOT/GRASP/videos/level2" "$L2"
+      fi
+      # level1 is basic visual understanding, unused by evals/intuitive_physics.
+      rm -rf "$DATA_ROOT/GRASP/videos"
+      drop "$ZIP"
+      NMP4=$(n_files "$L2" '*.mp4')
+    fi
+
+    NDIRS=$(n_subdirs "$L2")
+    echo "GRASP: $NDIRS dirs, $NMP4 mp4 in $L2 (expect 32 dirs, $EXPECT_MP4 mp4)"
+    [[ "$NDIRS" -eq 32 ]] || { echo "FAIL: expected 32 dirs (16 P_ + 16 IP_)"; exit 1; }
+    # Guard against the examples/ set (1 clip per property) passing as complete.
+    [[ "$NMP4" -ge "$EXPECT_MP4" ]] || { echo "FAIL: only $NMP4 mp4, expected $EXPECT_MP4"; exit 1; }
     ;;
 
   intphys-test-O*)
