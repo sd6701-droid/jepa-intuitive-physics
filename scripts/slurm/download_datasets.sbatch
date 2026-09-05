@@ -100,27 +100,42 @@ case "$UNIT" in
     ;;
 
   grasp)
-    # Google Drive folder: https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M
-    # Drive rate-limits scripted folder pulls, so this tries gdown and otherwise
-    # tells you to stage videos.zip by hand. Expected layout after unzip:
-    #   GRASP/level2/{P_,IP_}<Property>/<scene>.mp4
-    mkdir -p "$DATA_ROOT/GRASP"
-    ZIP="$DATA_ROOT/GRASP/videos.zip"
-    if [[ ! -f "$ZIP" ]] && command -v gdown >/dev/null 2>&1; then
-      gdown --folder --remaining-ok -O "$DATA_ROOT/GRASP" \
-        https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M || true
-    fi
-    if [[ -f "$ZIP" ]]; then
-      unzip -q -o "$ZIP" -d "$DATA_ROOT/GRASP"
-      drop "$ZIP"
-      ls "$DATA_ROOT/GRASP"
-    elif [[ -d "$DATA_ROOT/GRASP/level2" ]]; then
-      echo "GRASP already extracted at $DATA_ROOT/GRASP/level2"
+    # Drive folder: https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M
+    # NOTE: videos.zip in that folder ships level1 ONLY (ColorBlack, ShapeBall,
+    # ...). This eval needs level2 (Collision, Continuity, Gravity, ...), whose
+    # clips live in the sibling P_*/IP_* Drive subfolders, so the whole folder
+    # has to be mirrored and then reassembled into GRASP/level2/.
+    L2="$DATA_ROOT/GRASP/level2"
+    SRC="$DATA_ROOT/GRASP/drive_root"
+    NDIRS=$(ls "$L2" 2>/dev/null | wc -l)
+    if [[ "$NDIRS" -ge 32 ]]; then
+      echo "GRASP already assembled: $NDIRS dirs in $L2"
     else
-      echo "GRASP: gdown unavailable or Drive refused. Download videos.zip in a"
-      echo "browser, copy it to $ZIP, then re-run: sbatch --array=2 scripts/slurm/download_datasets.sbatch"
-      exit 1
+      command -v gdown >/dev/null 2>&1 || { echo "gdown missing: pip install --user gdown"; exit 1; }
+      mkdir -p "$SRC"
+      # Drive throttles folder pulls; gdown resumes, so just retry the whole call.
+      for attempt in 1 2 3 4 5; do
+        echo "--- gdown attempt $attempt ---"
+        gdown --folder -O "$SRC" \
+          https://drive.google.com/drive/folders/1F_9R1zLtAMQ7N_IIIio6HjEBkGuuMX4M && break
+        echo "attempt $attempt failed, sleeping 120s"; sleep 120
+      done
+
+      # Collect the property dirs wherever gdown nested them and flatten to level2/.
+      mkdir -p "$L2"
+      mapfile -t PDIRS < <(find "$SRC" -maxdepth 4 -type d \( -name 'P_*' -o -name 'IP_*' \) | sort)
+      echo "found ${#PDIRS[@]} property dirs under $SRC"
+      for d in "${PDIRS[@]}"; do
+        [[ -d "$L2/$(basename "$d")" ]] || mv "$d" "$L2/"
+      done
+
+      # level1 and the zips are not used by evals/intuitive_physics.
+      rm -rf "$SRC" "$DATA_ROOT/GRASP/videos"
+      NDIRS=$(ls "$L2" 2>/dev/null | wc -l)
     fi
+    NMP4=$(find "$L2" -name '*.mp4' 2>/dev/null | wc -l)
+    echo "GRASP: $NDIRS dirs, $NMP4 mp4 in $L2"
+    [[ "$NDIRS" -ge 32 ]] || { echo "expected 32 dirs (16 P_ + 16 IP_)"; exit 1; }
     ;;
 
   intphys-test-O*)
