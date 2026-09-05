@@ -19,8 +19,12 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
 
-#Placeholder
-CLUSTER = "cluster"
+# Single-machine setup: one "cluster" whose dataset root comes from the
+# INTPHYS_DATA_ROOT env var (default: /scratch/sd6701/datasets). Override per-dataset
+# paths below if your data lives somewhere else.
+CLUSTER = "local"
+DATA_ROOT = os.environ.get("INTPHYS_DATA_ROOT", "/scratch/sd6701/datasets")
+DATA_ROOT = os.path.abspath(DATA_ROOT)
 
 SUPPORTED_CLUSTERS = {
     "cluster": CLUSTER,
@@ -29,15 +33,7 @@ SUPPORTED_CLUSTERS = {
 
 @lru_cache()
 def get_cluster() -> str:
-    # If the node is assigned by slurm, this is easy
-    where = os.environ.get("SLURM_CLUSTER_NAME")
-    if where is not None:
-        if where in SUPPORTED_CLUSTERS:
-            return SUPPORTED_CLUSTERS[where]
-        else:
-            #return where we are to add support
-            return where
-    # default: return the default name
+    # Single-cluster setup (see README): always use the local paths below.
     return CLUSTER
 
 # Gets slurm job vars, to launch another job with the same vars
@@ -52,16 +48,20 @@ def slurm_account_partition_and_qos(low_pri: bool) -> str:
 
 
 DATASET_PATHS_BY_CLUSTER = {
-    CLUSTER:{
-        'IntPhys-dev-O1': '/datasetsIntPhys/dev/O1/',
-        'IntPhys-dev-O2': '/datasetsIntPhys/dev/O2/',
-        'IntPhys-dev-O3': '/datasetsIntPhys/dev/O3/',
-        'IntPhys-test-O1': '/datasetsIntPhys/test/O1/',
-        'IntPhys-test-O2': '/datasetsIntPhys/test/O2/',
-        'IntPhys-test-O3': '/datasetsIntPhys/test/O3/',
-        "GRASP-level-2": "/datasetsgrasp/GRASP/level2/",
-        "InfLevel-lab":"/datasetsinflevel_lab/",
-        "InfLevel-lab-priming":"/datasetsinflevel_lab/"
+    CLUSTER: {
+        # IntPhys dev set: https://download-intphys.cognitive-ml.fr/dev.tar.gz
+        # layout: <root>/IntPhys/dev/O1/<scene>/{1,2,3,4}/scene/*.png + status.json
+        'IntPhys-dev-O1': f'{DATA_ROOT}/IntPhys/dev/O1/',
+        'IntPhys-dev-O2': f'{DATA_ROOT}/IntPhys/dev/O2/',
+        'IntPhys-dev-O3': f'{DATA_ROOT}/IntPhys/dev/O3/',
+        'IntPhys-test-O1': f'{DATA_ROOT}/IntPhys/test/O1/',
+        'IntPhys-test-O2': f'{DATA_ROOT}/IntPhys/test/O2/',
+        'IntPhys-test-O3': f'{DATA_ROOT}/IntPhys/test/O3/',
+        # GRASP level 2: layout <root>/GRASP/level2/{P_,IP_}<Property>/<scene>.mp4
+        "GRASP-level-2": f"{DATA_ROOT}/GRASP/level2/",
+        # InfLevel-lab: layout <root>/inflevel_lab/{continuity,gravity,solidity}/*.mp4
+        "InfLevel-lab": f"{DATA_ROOT}/inflevel_lab/",
+        "InfLevel-lab-priming": f"{DATA_ROOT}/inflevel_lab/",
     }
 }
 

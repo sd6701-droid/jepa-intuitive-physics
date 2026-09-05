@@ -20,3 +20,4 @@ fire
 python-box
 scikit-image
 ftfy
+decord

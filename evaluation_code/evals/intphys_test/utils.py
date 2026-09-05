@@ -18,8 +18,12 @@ import torch.distributed as dist
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
-#Placeholder
-CLUSTER = "cluster"
+# Single-machine setup: one "cluster" whose dataset root comes from the
+# INTPHYS_DATA_ROOT env var (default: /scratch/sd6701/datasets). Override per-dataset
+# paths below if your data lives somewhere else.
+CLUSTER = "local"
+DATA_ROOT = os.environ.get("INTPHYS_DATA_ROOT", "/scratch/sd6701/datasets")
+DATA_ROOT = os.path.abspath(DATA_ROOT)
 
 SUPPORTED_CLUSTERS = {
     "cluster": CLUSTER,
@@ -28,15 +32,7 @@ SUPPORTED_CLUSTERS = {
 
 @lru_cache()
 def get_cluster() -> str:
-    # If the node is assigned by slurm, this is easy
-    where = os.environ.get("SLURM_CLUSTER_NAME")
-    if where is not None:
-        if where in SUPPORTED_CLUSTERS:
-            return SUPPORTED_CLUSTERS[where]
-        else:
-            #return where we are to add support
-            return where
-    # default: return the default name
+    # Single-cluster setup (see README): always use the local paths below.
     return CLUSTER
 
 
@@ -52,8 +48,9 @@ def slurm_account_partition_and_qos(low_pri: bool) -> str:
 
 
 DATASET_PATHS_BY_CLUSTER = {
-    CLUSTER:{
-        'IntPhys-test': '/datasetsIntPhys/test/',
+    CLUSTER: {
+        # IntPhys test set (leaderboard only): <root>/IntPhys/test/{O1,O2,O3}/
+        'IntPhys-test': f'{DATA_ROOT}/IntPhys/test/',
     }
 }
 
