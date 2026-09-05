@@ -62,9 +62,21 @@ IDX="${SLURM_ARRAY_TASK_ID:-0}"
 UNIT="${NAMES[$IDX]:-}"
 [[ -n "$UNIT" ]] || { echo "no unit for array index $IDX"; exit 1; }
 
+# Sentinels carry the version of the logic that wrote them. Bump this whenever
+# a unit's notion of "complete" changes, so a sentinel left by an older (or
+# buggy) version is ignored rather than masking the fix -- job 16986890_2 was a
+# no-op because a run that mistook GRASP's 32-clip examples/ set for the full
+# benchmark had already written grasp.done.
+SENTINEL_VERSION=2
 DONE="$STAGE/$UNIT.done"
 echo "[$(date -Is)] unit=$UNIT idx=$IDX root=$DATA_ROOT host=$(hostname)"
-if [[ -f "$DONE" ]]; then echo "already complete, nothing to do"; exit 0; fi
+if [[ -f "$DONE" ]]; then
+  if [[ "$(cat "$DONE" 2>/dev/null)" == "$SENTINEL_VERSION" ]]; then
+    echo "already complete, nothing to do"; exit 0
+  fi
+  echo "sentinel from an older version ($(cat "$DONE" 2>/dev/null || echo none)), re-verifying"
+  rm -f "$DONE"
+fi
 
 # --- helpers ---------------------------------------------------------------
 # Both paths resume a partial file, so a --requeue restart picks up where it
@@ -181,5 +193,5 @@ case "$UNIT" in
   *) echo "unknown unit: $UNIT"; exit 1 ;;
 esac
 
-touch "$DONE"
+echo "$SENTINEL_VERSION" > "$DONE"
 echo "[$(date -Is)] unit=$UNIT complete"
