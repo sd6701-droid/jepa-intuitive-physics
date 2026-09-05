@@ -90,6 +90,12 @@ def main(args_eval, resume_preempt=False):
     is_causal = args_pretrain.get('is_causal', False)
     pred_is_causal = args_pretrain.get('pred_is_causal', False)
     pred_depth = args_pretrain.get('pred_depth', 12)
+    pred_embed_dim = args_pretrain.get('pred_embed_dim', 384)
+    pred_num_heads = args_pretrain.get('pred_num_heads', None)
+    # Optional plug-in: a python module exposing build_models(device, **kwargs)
+    # that returns (encoder, target_encoder, predictor) with the wrapper interface.
+    custom_model_module = args_pretrain.get('custom_model_module', None)
+    custom_model_kwargs = args_pretrain.get('custom_model_kwargs', {}) or {}
     pretrained_path = os.path.join(pretrain_folder, ckp_fname)
     # [for Video model]:
     tubelet_size = args_pretrain.get('tubelet_size', 2)
@@ -163,6 +169,10 @@ def main(args_eval, resume_preempt=False):
         use_SiLU=use_SiLU,
         wide_SiLU=wide_SiLU,
         use_sdpa=use_sdpa,
+        pred_embed_dim=pred_embed_dim,
+        pred_num_heads=pred_num_heads,
+        custom_model_module=custom_model_module,
+        custom_model_kwargs=custom_model_kwargs,
         is_mae=is_mae)
 
     if not is_mae:
@@ -219,6 +229,7 @@ def main(args_eval, resume_preempt=False):
                     mae_decoder_blocks=mae_decoder_blocks,
                     patch_size=patch_size,
                     resolution=resolution,
+                    tubelet_size=tubelet_size,
                     normalize_targets=normalize_targets)
 
                 all_losses = batch_all_gather(all_losses).cpu()
@@ -348,6 +359,7 @@ def extract_losses(
     mae_decoder_blocks=-1,
     patch_size=16,
     resolution=224,
+    tubelet_size=2,
     normalize_targets=True
 ):
     print(context_lengths)
@@ -419,7 +431,7 @@ def extract_losses(
         all_losses_ctxt = []
         for CTXT_LEN in context_lengths:
 
-            m,m_,full_m = get_time_masks(CTXT_LEN,spatial_size=(patch_size,patch_size),temporal_dim=frames_per_clip,as_bool=is_mae)
+            m,m_,full_m = get_time_masks(CTXT_LEN,spatial_size=(patch_size,patch_size),temporal_size=tubelet_size,temporal_dim=frames_per_clip,as_bool=is_mae)
             full_m = full_m.unsqueeze(0).to(device)
             m = m.unsqueeze(0).to(device)
             m_ = m_.unsqueeze(0).to(device)
@@ -595,9 +607,24 @@ def init_model(
     use_mask_tokens=True,
     pred_embed_dim=384,
     pred_depth=12,
+    pred_num_heads=None,
     num_mask_tokens=2,
+    custom_model_module=None,
+    custom_model_kwargs=None,
     is_mae=False,
 ):
+    if custom_model_module is not None:
+        # User-supplied builder (see evals/intuitive_physics/adapters/README.md).
+        import importlib
+        builder = importlib.import_module(custom_model_module)
+        encoder, target_encoder, predictor = builder.build_models(
+            device=device, **(custom_model_kwargs or {}))
+        encoder.to(device); target_encoder.to(device); predictor.to(device)
+        return load_pretrained(
+            encoder=encoder, predictor=predictor, target_encoder=target_encoder,
+            pretrained=pretrained, enc_checkpoint_key=enc_checkpoint_key,
+            pred_checkpoint_key=pred_checkpoint_key, is_mae=False)
+
     if is_mae:
 
         encoder = videomae.__dict__[model_name]()
@@ -633,7 +660,7 @@ def init_model(
             embed_dim=encoder.backbone.embed_dim,
             predictor_embed_dim=pred_embed_dim,
             depth=pred_depth,
-            num_heads=encoder.backbone.num_heads,
+            num_heads=pred_num_heads or encoder.backbone.num_heads,
             uniform_power=uniform_power,
             num_mask_tokens=num_mask_tokens,
             zero_init_mask_tokens=True,

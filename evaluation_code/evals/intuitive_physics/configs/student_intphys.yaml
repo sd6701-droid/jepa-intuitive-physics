@@ -1,27 +1,40 @@
-# Eval config for a frozen student encoder + frozen teacher (target encoder) + predictor.
-# Checkpoint must contain keys: encoder, target_encoder, predictor, epoch
-# (build it with tools/pack_student_checkpoint.py).
+# IntPhys eval for the SALT frozen ViT-S student + frozen SSv2 teacher + predictor
+# (all bi-directional attention).
+#
+# Checkpoint is produced by scripts/pack_student.sh from
+#   student+predictor: /scratch/sd6701/salt/p-salt/results/student_ssv2_salt_tube1/checkpoints/01266910/last/checkpoint.pth
+#   teacher          : /scratch/sd6701/salt/p-salt/results/teacher_ssv2/checkpoints/8f00b836/last/checkpoint.pth
+# and must contain keys: encoder, target_encoder, predictor, epoch.
 pretrain:
   enc_checkpoint_key: encoder
   pred_checkpoint_key: predictor
-  # Architecture of encoder AND target_encoder (must be identical): one of
-  # vit_base, vit_base_rope, vit_large, vit_large_rope, vit_huge, vit_huge_rope
-  # (see src/models/vision_transformer.py). Add a factory there if yours differs.
-  model_name: vit_large_rope
+  folder: /scratch/sd6701/jepa-intuitive-physics/checkpoints/student_ssv2_salt_tube1/
+  checkpoint: student-latest.pth.tar
+  write_tag: salt_student
+
+  # --- architecture (VERIFY against tools/inspect_checkpoint.py output) ---
+  model_name: vit_small            # ViT-S: embed 384, depth 12, heads 6 (vit_small_rope if RoPE)
   patch_size: 16
-  tubelet_size: 2
+  tubelet_size: 2                  # TODO: run name says "tube1" -> set 1 if patch_embed has temporal size 1
   frames_per_clip: 16
-  folder: /path/to/checkpoints/student/      # directory holding the checkpoint
-  checkpoint: student-latest.pth.tar         # file name inside folder
-  write_tag: student                         # prefix of the output csv/pth files
-  # Encoder/predictor build flags: must match how your networks were built.
   use_sdpa: true
   use_silu: false
   wide_silu: true
   uniform_power: true
-  is_causal: false
-  pred_is_causal: false
-  pred_depth: 12                             # predictor depth (predictor width is fixed at 384 in eval.py)
+  is_causal: false                 # bi-directional
+  pred_is_causal: false            # bi-directional
+  pred_depth: 12                   # TODO: from inspect (number of predictor blocks)
+  pred_embed_dim: 384              # TODO: from inspect (predictor_embed weight shape)
+  # pred_num_heads: 6              # optional; defaults to encoder heads
+
+  # --- plug in the p-salt predictor class instead of the repo's vit_predictor ---
+  # Uncomment once adapters/salt_student.py::build_salt_predictor is filled in.
+  # custom_model_module: evals.intuitive_physics.adapters.salt_student
+  # custom_model_kwargs:
+  #   model_name: vit_small
+  #   tubelet_size: 2
+  #   use_salt_predictor: true
+  #   salt_predictor_kwargs: {}
 data:
   batch_size: 1
   resolution: 224
@@ -30,12 +43,10 @@ data:
   frames_per_clip: 16
   context_lengths: [2,4,6,8,10]
   frame_steps: 2
-  normalize_context: false                   # layer-norm student context tokens before the predictor
-# Layer-norm teacher tokens before the L1 loss (V-JEPA does this).
-# Set to false if your predictor was trained against raw teacher features.
-normalize_targets: true
-tag: student
+  normalize_context: false
+normalize_targets: true            # set false if the predictor was trained on raw (un-layernormed) teacher tokens
+tag: salt_student
 nodes: 1
-tasks_per_node: 6
+tasks_per_node: 3
 eval_name: intuitive_physics
 dataset: intphys
