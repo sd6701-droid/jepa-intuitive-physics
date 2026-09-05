@@ -88,6 +88,18 @@ untar() { # tarball dest
   else tar -xzf "$tgz" -C "$dest"; fi
 }
 
+# Counting helpers. A bare `ls missing | wc -l` exits 2, and with pipefail +
+# set -e that kills the job instead of reporting 0 -- so guard the directory.
+n_subdirs() { # dir
+  [[ -d "$1" ]] || { echo 0; return 0; }
+  find "$1" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d "[:space:]"
+}
+
+n_files() { # dir pattern
+  [[ -d "$1" ]] || { echo 0; return 0; }
+  find "$1" -name "$2" -type f | wc -l | tr -d "[:space:]"
+}
+
 drop() { # tarball -- free the archive unless KEEP_ARCHIVES=1
   [[ "$KEEP_ARCHIVES" == "1" ]] || rm -f "$1"
 }
@@ -120,7 +132,7 @@ case "$UNIT" in
     # has to be mirrored and then reassembled into GRASP/level2/.
     L2="$DATA_ROOT/GRASP/level2"
     SRC="$DATA_ROOT/GRASP/drive_root"
-    NDIRS=$(ls "$L2" 2>/dev/null | wc -l)
+    NDIRS=$(n_subdirs "$L2")
     if [[ "$NDIRS" -ge 32 ]]; then
       echo "GRASP already assembled: $NDIRS dirs in $L2"
     else
@@ -148,9 +160,9 @@ case "$UNIT" in
 
       # level1 and the zips are not used by evals/intuitive_physics.
       rm -rf "$SRC" "$DATA_ROOT/GRASP/videos"
-      NDIRS=$(ls "$L2" 2>/dev/null | wc -l)
+      NDIRS=$(n_subdirs "$L2")
     fi
-    NMP4=$(find "$L2" -name '*.mp4' 2>/dev/null | wc -l)
+    NMP4=$(n_files "$L2" '*.mp4')
     echo "GRASP: $NDIRS dirs, $NMP4 mp4 in $L2"
     [[ "$NDIRS" -ge 32 ]] || { echo "expected 32 dirs (16 P_ + 16 IP_)"; exit 1; }
     ;;
