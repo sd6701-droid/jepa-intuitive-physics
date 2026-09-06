@@ -58,6 +58,15 @@ cd "$REPO/evaluation_code"
 NGPU=$(python -c "import torch;print(torch.cuda.device_count())")
 DEVICES=$(seq -s ' ' -f 'cuda:%g' 0 $((NGPU-1)))
 echo "host=$(hostname) gpus=$NGPU config=$CONFIG data=$INTPHYS_DATA_ROOT"
-python -c "import torch, decord; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+echo "python=$(which python) conda_env=${CONDA_DEFAULT_ENV:-none}"
+# Preflight: fail fast (before touching the GPU) if the env is missing anything the eval imports.
+python - <<'PY' || { echo "preflight failed: run  pip install -r requirements.txt  in env ${CONDA_DEFAULT_ENV:-?}"; exit 1; }
+import importlib, sys
+missing = [m for m in ("torch","torchvision","decord","einops","yaml","sklearn","scipy","pandas","timm","cv2","PIL","wandb","submitit","skimage")
+           if importlib.util.find_spec(m) is None]
+if missing:
+    print("missing packages:", missing); sys.exit(1)
+import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "gpus", torch.cuda.device_count())
+PY
 
 python -m evals.main --devices $DEVICES --fname "$CONFIG"
