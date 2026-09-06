@@ -126,6 +126,9 @@ def main(args_eval, resume_preempt=False):
     is_mae = args_eval.get('is_mae', False)
     mae_decoder_blocks = args_eval.get('mae_decoder_blocks', -1)
     normalize_targets =args_eval.get('normalize_targets',True)
+    # -- WANDB (optional): wandb: {enabled, project, entity, name, group, tags, mode}
+    args_wandb = args_eval.get('wandb', {}) or {}
+    wandb_enabled = bool(args_wandb.get('enabled', False))
     # ----------------------------------------------------------------------- #
 
     try:
@@ -203,6 +206,21 @@ def main(args_eval, resume_preempt=False):
         eval_frame_steps = [eval_frame_steps]
 
     init_logger = True
+    wandb_run = None
+    if wandb_enabled and rank == 0:
+        import wandb
+        wandb_run = wandb.init(
+            project=args_wandb.get('project', 'intuitive-physics'),
+            entity=args_wandb.get('entity', None),
+            name=args_wandb.get('name', None) or f"{tag}-{dataset}-{eval_tag}",
+            group=args_wandb.get('group', None),
+            tags=args_wandb.get('tags', None),
+            mode=args_wandb.get('mode', 'online'),
+            dir=folder,
+            config=args_eval,
+            job_type='eval',
+        )
+        wandb_table_rows = []
     for block in PROPERTIES_BY_DATASET[dataset]:
         for frame_step in eval_frame_steps:
             logger.info(f"Doing property {block} ...")
@@ -267,16 +285,63 @@ def main(args_eval, resume_preempt=False):
                     if rank == 0:
                         # Weguarantee that the order is the same as before, rather than using .values()
                         csv_logger.log(block,context,frame_step,*[metrics[key] for key in keys])
+                    if wandb_run is not None:
+                        _log_wandb_metrics(wandb_run, wandb_table_rows, dataset, block, str(context), frame_step, metrics, losses, all_labels)
 
 
                 filtered = all_losses.min(1)[0]
                 metrics = compute_metrics(filtered,all_labels)
                 if rank == 0:
                     csv_logger.log(block,"Filtered",frame_step,*[metrics[key] for key in keys])
+                if wandb_run is not None:
+                    _log_wandb_metrics(wandb_run, wandb_table_rows, dataset, block, "Filtered", frame_step, metrics, filtered, all_labels)
+
+    if wandb_run is not None:
+        import wandb
+        cols = ["dataset", "block", "context", "frame_step"] + [k for k in wandb_table_rows[0].keys() if k not in ("dataset", "block", "context", "frame_step")]
+        wandb_run.log({"metrics_table": wandb.Table(columns=cols, data=[[r.get(c) for c in cols] for r in wandb_table_rows])})
+        if os.path.exists(log_file):
+            wandb_run.save(log_file, base_path=folder, policy="now")
+        wandb_run.finish()
 
 
 
 
+
+
+def _log_wandb_metrics(run, rows, dataset, block, context, frame_step, metrics, losses, labels):
+    """Log one (block, context) row of metrics as scalars, keep it for the summary table,
+    and log the mean surprise-over-time curve for possible vs impossible videos."""
+    import wandb
+    scalars = {}
+    for k, v in metrics.items():
+        v = float(v.item()) if torch.is_tensor(v) else float(v)
+        scalars[f"{dataset}/{block}/ctx{context}/{k}"] = v
+    # surprise curves (mean over videos), zero padding removed
+    real = losses[labels == 1]
+    fake = losses[labels == 0]
+    curve = {}
+    for name, l in (("possible", real), ("impossible", fake)):
+        l = l.float()
+        valid = (l != 0).float()
+        mean = (l * valid).sum(0) / valid.sum(0).clamp(min=1)
+        curve[name] = mean[valid.sum(0) > 0].tolist()
+    T = max(len(curve["possible"]), len(curve["impossible"]))
+    if T > 0:
+        xs = list(range(T))
+        ys = [curve["possible"] + [None] * (T - len(curve["possible"])),
+              curve["impossible"] + [None] * (T - len(curve["impossible"]))]
+        scalars[f"{dataset}/{block}/ctx{context}/surprise_curve"] = wandb.plot.line_series(
+            xs=xs, ys=ys, keys=["possible", "impossible"],
+            title=f"{block} ctx={context}: mean surprise over time", xname="window")
+    run.log(scalars)
+    row = {"dataset": dataset, "block": block, "context": context, "frame_step": frame_step}
+    row.update({k: (float(v.item()) if torch.is_tensor(v) else float(v)) for k, v in metrics.items()})
+    rows.append(row)
+    # headline numbers in the run summary
+    for k in ("Relative Accuracy (max)", "Relative Accuracy (avg)", "AUROC (max)"):
+        if k in metrics:
+            run.summary[f"{dataset}/{block}/ctx{context}/{k}"] = row[k]
 
 
 def compute_metrics(losses,labels):

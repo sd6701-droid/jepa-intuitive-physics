@@ -34,6 +34,14 @@ data:
 # Layer-norm teacher tokens before the L1 loss (V-JEPA does this).
 # Set to false if your predictor was trained against raw teacher features.
 normalize_targets: true
+wandb:
+  enabled: true
+  project: intphys-eval
+  entity: null                     # your W&B team/user, or null for default
+  name: null                       # defaults to <write_tag>-<dataset>-<tag>
+  group: salt_student
+  tags: [vit_small, frozen_teacher, ssv2]
+  mode: online                     # or "offline" on nodes without internet (then: wandb sync)
 tag: student
 nodes: 1
 tasks_per_node: 6

@@ -45,6 +45,14 @@ data:
   frame_steps: 2
   normalize_context: false
 normalize_targets: true            # set false if the predictor was trained on raw (un-layernormed) teacher tokens
+wandb:
+  enabled: true
+  project: intphys-eval
+  entity: null                     # your W&B team/user, or null for default
+  name: null                       # defaults to <write_tag>-<dataset>-<tag>
+  group: salt_student
+  tags: [vit_small, frozen_teacher, ssv2]
+  mode: online                     # or "offline" on nodes without internet (then: wandb sync)
 tag: salt_student
 nodes: 1
 tasks_per_node: 3
