@@ -20,12 +20,24 @@ import torch
 import yaml
 
 
+def is_deterministic(key):
+    """True for tensors the model rebuilds identically at construction.
+
+    RoPE frequency tables are nn.Parameter only so they move with .to(device);
+    they are computed as 1/(theta**(arange(0,dim,2)/dim)) in rope.py:107 with
+    learned_freq=False (rope.py:87), so they are never trained and their absence
+    from a checkpoint is harmless -- not a randomly initialised tensor.
+    """
+    return key.endswith("rotary_emb.freqs")
+
+
 def summarize(name, model, packed):
     """Compare a built module against the state_dict the eval would feed it."""
     # eval.py strips 'module.' before loading; mirror that exactly (eval.py:604)
     packed = {k.replace("module.", ""): v for k, v in packed.items()}
     have = model.state_dict()
-    missing = [k for k in have if k not in packed]
+    deterministic = [k for k in have if k not in packed and is_deterministic(k)]
+    missing = [k for k in have if k not in packed and not is_deterministic(k)]
     unexpected = [k for k in packed if k not in have]
     shape_bad = [k for k in have if k in packed and packed[k].shape != have[k].shape]
 
@@ -40,6 +52,9 @@ def summarize(name, model, packed):
     print(f"  model expects {len(have)} tensors, checkpoint offers {len(packed)}")
     print(f"  loaded {len(loadable)}  missing {len(missing)}  "
           f"shape-mismatch {len(shape_bad)}  unexpected {len(unexpected)}")
+    if deterministic:
+        print(f"  {len(deterministic)} deterministic tensors absent from the checkpoint "
+              f"and rebuilt at init (RoPE frequency tables) -- benign")
     for label, keys in (("missing", missing), ("shape-mismatch", shape_bad),
                         ("unexpected", unexpected), ("not-applied", not_applied)):
         if keys:
@@ -97,7 +112,8 @@ def main():
 
     print()
     if all(results):
-        print("All three modules loaded fully. A chance-level score is NOT a loading problem.")
+        print("All three modules loaded fully. A chance-level score is NOT a loading problem;\n"
+              "look at the model, the teacher's representation quality, or the metric instead.")
     else:
         print("At least one module did not load fully -- those tensors are still random, "
               "and any score from this config is meaningless.")
