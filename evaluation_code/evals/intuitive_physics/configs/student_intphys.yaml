@@ -55,6 +55,6 @@ wandb:
   mode: online                     # or "offline" on nodes without internet (then: wandb sync)
 tag: salt_student
 nodes: 1
-tasks_per_node: 3
+tasks_per_node: 1
 eval_name: intuitive_physics
 dataset: intphys

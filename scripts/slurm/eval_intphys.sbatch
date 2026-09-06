@@ -1,23 +1,26 @@
 #!/bin/bash
+#SBATCH --gres=gpu:1
+#SBATCH --constraint=h100
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=24
-#SBATCH --mem=96G
-#SBATCH --gres=gpu:3
-#SBATCH --time=12:00:00
-#SBATCH --account=torch_pr_230_tandon_advanced
+#SBATCH --mem=240G
+#SBATCH --time=02:00:00
+#SBATCH --account=torch_pr_230_tandon_priority
 #SBATCH --job-name=intphys_eval
 #SBATCH --output=/scratch/sd6701/jepa-intuitive-physics/logs/eval/%x_%j.log
 #SBATCH --error=/scratch/sd6701/jepa-intuitive-physics/logs/eval/%x_%j.err
-#SBATCH --requeue
-#SBATCH --open-mode=append
-# Runs evals/intuitive_physics on one node. World size (= #GPUs) must divide 30
-# for IntPhys (1, 2, 3, 5, 6). 3 GPUs -> 10 scenes per rank per block.
+#SBATCH --requeue                # permit self-requeue after a crash
+#SBATCH --open-mode=append       # requeued attempt appends to the SAME %j log -- required
+# Runs evals/intuitive_physics on one H100. World size (= #GPUs) must divide 30
+# for IntPhys; with 1 GPU every rank sees all 30 scenes per block. ViT-S is
+# small enough that IntPhys finishes comfortably in the 2 h window; raise
+# --time for GRASP / InfLevel (more, longer videos).
 #
 # Usage:
 #   mkdir -p /scratch/sd6701/jepa-intuitive-physics/logs/eval
 #   sbatch scripts/slurm/eval_intphys.sbatch                                   # student_intphys.yaml
-#   CONFIG=evals/intuitive_physics/configs/student_grasp.yaml sbatch scripts/slurm/eval_intphys.sbatch
+#   CONFIG=evals/intuitive_physics/configs/student_grasp.yaml sbatch --time=06:00:00 scripts/slurm/eval_intphys.sbatch
 set -euo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
