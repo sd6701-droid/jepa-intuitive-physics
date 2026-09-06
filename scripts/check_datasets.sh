@@ -3,7 +3,7 @@
 # evals/intuitive_physics expects. Structural, not just "did bytes arrive":
 # it walks the same paths the dataset classes walk.
 #   IntPhys : <root>/IntPhys/dev/O{1,2,3}/<scene>/{1,2,3,4}/{scene/*.png,status.json}
-#   GRASP   : <root>/GRASP/level2/{P_,IP_}<Property>/<scene>.mp4
+#   GRASP   : <root>/GRASP/videos/level2/{P_,IP_}<Property>/<scene>.mp4
 #   InfLevel: <root>/inflevel_lab/{continuity,gravity,solidity}/*.mp4, checked
 #             against the CSV manifests in auxiliary_data_loading_files/inflevel/
 # Usage: bash scripts/check_datasets.sh [array_job_id]
@@ -53,10 +53,10 @@ echo "=== GRASP (level2) ==="
 PROPS="Collision Continuity Gravity GravityContinuity GravityInertia GravityInertia2 \
 GravitySupport Inertia Inertia2 ObjectPermanence ObjectPermanence2 ObjectPermanence3 \
 SolidityContinuity SolidityContinuity2 Unchangeableness Unchangeableness2"
-if [[ -d "$D/GRASP/level2" ]]; then
+if [[ -d "$D/GRASP/videos/level2" ]]; then
   for prop in $PROPS; do
-    np=$(ls "$D/GRASP/level2/P_$prop"/*.mp4  2>/dev/null | wc -l)
-    ni=$(ls "$D/GRASP/level2/IP_$prop"/*.mp4 2>/dev/null | wc -l)
+    np=$(ls "$D/GRASP/videos/level2/P_$prop"/*.mp4  2>/dev/null | wc -l)
+    ni=$(ls "$D/GRASP/videos/level2/IP_$prop"/*.mp4 2>/dev/null | wc -l)
     # eval pairs P_ with IP_ by index, so the two counts must match and be nonzero
     if [[ "$np" -gt 0 && "$np" -eq "$ni" ]]; then pass "$prop  $np possible / $ni impossible"
     else fail "$prop  $np possible / $ni impossible"; fi

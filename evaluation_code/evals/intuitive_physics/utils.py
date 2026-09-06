@@ -57,8 +57,8 @@ DATASET_PATHS_BY_CLUSTER = {
         'IntPhys-test-O1': f'{DATA_ROOT}/IntPhys/test/O1/',
         'IntPhys-test-O2': f'{DATA_ROOT}/IntPhys/test/O2/',
         'IntPhys-test-O3': f'{DATA_ROOT}/IntPhys/test/O3/',
-        # GRASP level 2: layout <root>/GRASP/level2/{P_,IP_}<Property>/<scene>.mp4
-        "GRASP-level-2": f"{DATA_ROOT}/GRASP/level2/",
+        # GRASP level 2: layout <root>/GRASP/videos/level2/{P_,IP_}<Property>/<scene>.mp4
+        "GRASP-level-2": f"{DATA_ROOT}/GRASP/videos/level2/",
         # InfLevel-lab: layout <root>/inflevel_lab/{continuity,gravity,solidity}/*.mp4
         "InfLevel-lab": f"{DATA_ROOT}/inflevel_lab/",
         "InfLevel-lab-priming": f"{DATA_ROOT}/inflevel_lab/",
