@@ -15,7 +15,7 @@ pretrain:
   # --- architecture (VERIFY against tools/inspect_checkpoint.py output) ---
   model_name: vit_small            # ViT-S: embed 384, depth 12, heads 6 (vit_small_rope if RoPE)
   patch_size: 16
-  tubelet_size: 2                  # TODO: run name says "tube1" -> set 1 if patch_embed has temporal size 1
+  tubelet_size: 1                  # student + teacher 8f00b836 both trained at tubelet 1 (16 temporal tokens, 3136 tok/clip)
   frames_per_clip: 16
   use_sdpa: true
   use_silu: false
@@ -23,16 +23,16 @@ pretrain:
   uniform_power: true
   is_causal: false                 # bi-directional
   pred_is_causal: false            # bi-directional
-  pred_depth: 12                   # TODO: from inspect (number of predictor blocks)
-  pred_embed_dim: 384              # TODO: from inspect (predictor_embed weight shape)
-  # pred_num_heads: 6              # optional; defaults to encoder heads
+  pred_depth: 12                   # from p-salt config
+  pred_embed_dim: 384              # from p-salt config
+  pred_num_heads: 16               # from p-salt config (encoder itself has 6)
 
   # --- plug in the p-salt predictor class instead of the repo's vit_predictor ---
   # Uncomment once adapters/salt_student.py::build_salt_predictor is filled in.
   # custom_model_module: evals.intuitive_physics.adapters.salt_student
   # custom_model_kwargs:
   #   model_name: vit_small
-  #   tubelet_size: 2
+  #   tubelet_size: 1
   #   use_salt_predictor: true
   #   salt_predictor_kwargs: {}
 data:
