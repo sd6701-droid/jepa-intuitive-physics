@@ -23,10 +23,13 @@ Usage:
     python tools/summarize_performance.py --root ckpt/vanilla --root ckpt/causal
 """
 import argparse
+import re
+import datetime
 import csv
 import glob
 import os
 import statistics
+import sys
 
 KEY = "Relative Accuracy (avg)"
 DATASETS = ("intphys", "grasp", "inflevel")
@@ -47,30 +50,66 @@ def dataset_of(path):
     return None
 
 
+def last_run_rows(path):
+    """eval.py's CSVLogger opens the file in append mode, so every re-run adds a
+    fresh header plus its rows. Keep only the segment after the LAST header
+    (i.e. the most recent complete run) and say so if there were several."""
+    with open(path) as f:
+        lines = [l for l in f.read().splitlines() if l.strip()]
+    heads = [i for i, l in enumerate(lines) if l.startswith("Block;")]
+    if not heads:
+        raise SystemExit(f"{path}: no header line starting with 'Block;'")
+    if len(heads) > 1:
+        print(f"  note: {os.path.relpath(path)} holds {len(heads)} runs (appended); using the last one", file=sys.stderr)
+    seg = lines[heads[-1]:]
+    return list(csv.DictReader(seg, delimiter=";"))
+
+
 def score(path):
     """Return (score, n_blocks) for one performance CSV."""
     per_block = {}
-    with open(path) as f:
-        for row in csv.DictReader(f, delimiter=";"):
-            if KEY not in row or row[KEY] in (None, ""):
-                raise SystemExit(f"{path}: no '{KEY}' column; got {list(row)[:6]}")
-            per_block.setdefault(row["Block"], []).append(float(row[KEY]))
+    for row in last_run_rows(path):
+        if KEY not in row or row[KEY] in (None, ""):
+            raise SystemExit(f"{path}: no '{KEY}' column; got {list(row)[:6]}")
+        per_block.setdefault(row["Block"], []).append(float(row[KEY]))
     if not per_block:
         raise SystemExit(f"{path}: no rows")
     return statistics.mean(max(v) for v in per_block.values()), len(per_block)
 
 
-def find_csvs(root):
-    """Locate one CSV per dataset under a checkpoint folder.
+STAMP_RE = re.compile(r"_(\d{8}-\d{6})_r0\.csv$")
 
-    eval.py writes <pretrain.folder>/intuitive_physics/<dataset>-<tag>/<write_tag>_r0.csv
+
+def run_time(path):
+    """When this CSV was produced: the timestamp eval.py puts in the file name
+    (<write_tag>_<YYYYmmdd-HHMMSS>_r0.csv), else the file's mtime for legacy
+    un-stamped files."""
+    m = STAMP_RE.search(os.path.basename(path))
+    if m:
+        return datetime.datetime.strptime(m.group(1), "%Y%m%d-%H%M%S").timestamp()
+    return os.path.getmtime(path)
+
+
+def find_csvs(root):
+    """Locate the NEWEST rank-0 CSV per dataset under a checkpoint folder.
+
+    eval.py writes <pretrain.folder>/intuitive_physics/<dataset>-<tag>/<write_tag>_<stamp>_r0.csv
+    (one file per run). If several runs exist, the latest wins and we say so.
     """
-    found = {}
+    cands = {}
     for path in glob.glob(os.path.join(root, "**", "*.csv"), recursive=True):
         d = dataset_of(os.path.relpath(path, root))
         # rank>0 files duplicate rank 0's header-only output
-        if d and not path.endswith(tuple(f"_r{i}.csv" for i in range(1, 64))):
-            found.setdefault(d, path)
+        if d and not re.search(r"_r[1-9]\d*\.csv$", path):
+            cands.setdefault(d, []).append(path)
+    found = {}
+    for d, paths in cands.items():
+        paths.sort(key=run_time)
+        found[d] = paths[-1]
+        if len(paths) > 1:
+            when = datetime.datetime.fromtimestamp(run_time(paths[-1])).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"  note: {d}: {len(paths)} runs under {os.path.relpath(root)}; using newest "
+                  f"{os.path.basename(paths[-1])} ({when})", file=sys.stderr)
     return found
 
 

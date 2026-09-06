@@ -7,6 +7,7 @@
 
 import os
 import copy
+import datetime
 
 # -- FOR DISTRIBUTED TRAINING ENSURE ONLY 1 DEVICE VISIBLE PER PROCESS
 try:
@@ -151,7 +152,12 @@ def main(args_eval, resume_preempt=False):
         folder = os.path.join(folder, f"{dataset}-{eval_tag}")
     if not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
-    log_file = os.path.join(folder, f'{tag}_r{rank}.csv')
+    # One CSV per run: <write_tag>_<YYYYmmdd-HHMMSS>_r<rank>.csv. CSVLogger appends,
+    # so a fixed name would silently stack re-runs into one file; the timestamp
+    # keeps every run separate and lets tools/summarize_performance.py pick the
+    # newest. Only rank 0 writes metrics, so per-rank clocks needn't agree.
+    run_stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    log_file = os.path.join(folder, f'{tag}_{run_stamp}_r{rank}.csv')
     # Initialize model
 
     # -- pretrained encoder (frozen)
