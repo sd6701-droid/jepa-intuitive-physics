@@ -98,6 +98,9 @@ def find_csvs(root):
     """
     cands = {}
     for path in glob.glob(os.path.join(root, "**", "*.csv"), recursive=True):
+        # wandb keeps a copy of the CSV under <run>/wandb/run-*/files/ -- not a run of its own
+        if f"{os.sep}wandb{os.sep}" in path:
+            continue
         d = dataset_of(os.path.relpath(path, root))
         # rank>0 files duplicate rank 0's header-only output
         if d and not re.search(r"_r[1-9]\d*\.csv$", path):
