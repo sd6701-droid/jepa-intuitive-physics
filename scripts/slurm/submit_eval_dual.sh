@@ -26,5 +26,5 @@ for ACC in $ACCOUNTS; do
 done
 echo "${JOBS[*]}" > "$GROUPDIR/jobs"
 echo "group dir: $GROUPDIR"
-echo "cancel both: scancel ${JOBS[*]}"
+echo "to cancel this pair, run: scancel ${JOBS[*]}"
 squeue -u "$USER" -o "%.10i %.20a %.12P %.10T %.10M %R" -j "$(IFS=,; echo "${JOBS[*]}")"

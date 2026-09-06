@@ -87,10 +87,18 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
+    def wrap(sd):
+        # eval.py wraps every network in MultiMaskWrapper, whose state_dict keys are
+        # "backbone.<name>". Store that form so the loader matches 1:1 (it also
+        # aligns the prefix itself, but the file should be right on its own).
+        if all(k.startswith("backbone.") for k in sd):
+            return sd
+        return {f"backbone.{k}": v for k, v in sd.items()}
+
     out = {
-        "encoder": load_sd(a.student, a.student_key, "encoder"),
-        "target_encoder": load_sd(a.teacher, a.teacher_key, "target_encoder"),
-        "predictor": load_sd(a.predictor, a.predictor_key, "predictor"),
+        "encoder": wrap(load_sd(a.student, a.student_key, "encoder")),
+        "target_encoder": wrap(load_sd(a.teacher, a.teacher_key, "target_encoder")),
+        "predictor": wrap(load_sd(a.predictor, a.predictor_key, "predictor")),
         "epoch": a.epoch,
     }
     for k in ("encoder", "target_encoder", "predictor"):

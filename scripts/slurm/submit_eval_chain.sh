@@ -25,7 +25,7 @@ for c in "${CONFIGS[@]}"; do
   DEP=(); [[ -n "$PREV" ]] && DEP=(--dependency="afterany:${PREV}")
   echo "### $c  (job-name $NAME${PREV:+, after $PREV})"
   OUT=$(CONFIG="$CFG" bash "$REPO/scripts/slurm/submit_eval_dual.sh" --job-name="$NAME" ${DEP[@]+"${DEP[@]}"} ${SBATCH_ARGS[@]+"${SBATCH_ARGS[@]}"})
-  echo "$OUT" | grep -E "queued job|cancel both"
+  echo "$OUT" | grep -E "queued job|to cancel this pair"
   IDS=$(echo "$OUT" | sed -n 's/^queued job \([0-9]*\) on .*/\1/p' | paste -sd: -)
   PREV="$IDS"
 done

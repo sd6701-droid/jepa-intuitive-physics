@@ -127,6 +127,8 @@ def main(args_eval, resume_preempt=False):
     is_mae = args_eval.get('is_mae', False)
     mae_decoder_blocks = args_eval.get('mae_decoder_blocks', -1)
     normalize_targets =args_eval.get('normalize_targets',True)
+    # If true, a checkpoint that only partially matches the model is tolerated (default: refuse).
+    min_coverage = 0.0 if args_eval.get('allow_partial_load', False) else 0.9
     # -- WANDB (optional): wandb: {enabled, project, entity, name, group, tags, mode}
     args_wandb = args_eval.get('wandb', {}) or {}
     wandb_enabled = bool(args_wandb.get('enabled', False))
@@ -182,6 +184,7 @@ def main(args_eval, resume_preempt=False):
         pred_num_heads=pred_num_heads,
         custom_model_module=custom_model_module,
         custom_model_kwargs=custom_model_kwargs,
+        min_coverage=min_coverage,
         is_mae=is_mae)
 
     if not is_mae:
@@ -588,6 +591,63 @@ def extract_losses(
 
 
 
+def align_state_dict_keys(sd, model_keys):
+    """Bring a checkpoint state_dict into the key form the (wrapped) model uses.
+
+    - drops DDP's "module." prefix
+    - adds/removes the MultiMaskWrapper "backbone." prefix when the checkpoint
+      stores the bare network but the model is wrapped (or vice versa)
+    Nothing else is renamed: architecture mismatches must stay visible."""
+    sd = {k.replace('module.', ''): v for k, v in sd.items()}
+    model_wrapped = any(k.startswith('backbone.') for k in model_keys)
+    sd_wrapped = any(k.startswith('backbone.') for k in sd)
+    if model_wrapped and not sd_wrapped:
+        sd = {f'backbone.{k}': v for k, v in sd.items()}
+    elif sd_wrapped and not model_wrapped:
+        sd = {k[len('backbone.'):] if k.startswith('backbone.') else k: v for k, v in sd.items()}
+    return sd
+
+
+def _is_deterministic_buffer(key):
+    # RoPE frequency tables are rebuilt identically at construction; never trained.
+    return key.endswith('rotary_emb.freqs')
+
+
+def _load_module(name, module, sd, min_coverage=0.9):
+    """Load `sd` into `module` non-strictly, but REFUSE to continue silently:
+    if fewer than `min_coverage` of the module's trainable tensors received a
+    weight, raise. (strict=False alone lets a mis-keyed checkpoint evaluate as
+    the seed-0 random network and score exactly like the random control.)"""
+    model_sd = module.state_dict()
+    sd = align_state_dict_keys(sd, model_sd.keys())
+    missing, shape_bad, loaded = [], [], 0
+    for k, v in model_sd.items():
+        if k not in sd:
+            if not _is_deterministic_buffer(k):
+                missing.append(k)
+                logger.info(f'[{name}] key "{k}" could not be found in loaded state dict')
+        elif sd[k].shape != v.shape:
+            shape_bad.append(k)
+            logger.info(f'[{name}] key "{k}" is of different shape in model ({tuple(v.shape)}) and loaded state dict ({tuple(sd[k].shape)})')
+            sd[k] = v
+        else:
+            loaded += 1
+    unexpected = [k for k in sd if k not in model_sd]
+    msg = module.load_state_dict(sd, strict=False)
+    n = sum(1 for k in model_sd if not _is_deterministic_buffer(k))
+    cov = loaded / max(n, 1)
+    logger.info(f'[{name}] loaded {loaded}/{n} tensors ({cov:.1%}); missing={len(missing)} shape_mismatch={len(shape_bad)} unexpected_in_ckpt={len(unexpected)}')
+    if unexpected[:5]:
+        logger.info(f'[{name}] e.g. unexpected checkpoint keys: {unexpected[:5]}')
+    if cov < min_coverage:
+        raise RuntimeError(
+            f'[{name}] only {loaded}/{n} tensors loaded from checkpoint ({cov:.1%}). '
+            f'First missing: {missing[:3]}; first checkpoint keys: {list(sd)[:3]}. '
+            f'Refusing to evaluate a randomly initialised {name}. '
+            f'Set allow_partial_load: true in the config to override.')
+    return msg
+
+
 def load_pretrained(
     encoder,
     target_encoder,
@@ -596,66 +656,26 @@ def load_pretrained(
     enc_checkpoint_key='encoder',
     target_enc_checkpoint_key='target_encoder',
     pred_checkpoint_key='predictor',
-    is_mae=False
+    is_mae=False,
+    min_coverage=0.9,
 ):
     logger.info(f'Loading pretrained model from {pretrained}')
-    checkpoint = torch.load(pretrained, map_location='cpu')
+    checkpoint = torch.load(pretrained, map_location='cpu', weights_only=False)
 
-    # Load encoder
-    try:
-        enc_pretrained_dict = checkpoint[enc_checkpoint_key]
-    except Exception:
-        enc_pretrained_dict = checkpoint['encoder']
-    # --
-    enc_pretrained_dict = {k.replace('module.', ''): v for k, v in enc_pretrained_dict.items()}
-    for k, v in encoder.state_dict().items():
-        if k not in enc_pretrained_dict:
-            logger.info(f'key "{k}" could not be found in loaded state dict')
-        elif enc_pretrained_dict[k].shape != v.shape:
-            logger.info(f'key "{k}" is of different shape in model and loaded state dict')
-            enc_pretrained_dict[k] = v
-    msg = encoder.load_state_dict(enc_pretrained_dict, strict=False)
-    logger.info(f'loaded pretrained model with msg: {msg}')
-    print(encoder)
+    def pick(key, fallback):
+        try:
+            return checkpoint[key]
+        except Exception:
+            return checkpoint[fallback]
 
+    _load_module('encoder', encoder, pick(enc_checkpoint_key, 'encoder'), min_coverage)
     if not is_mae:
-        # Load target encoder
-        try:
-            target_enc_pretrained_dict = checkpoint[target_enc_checkpoint_key]
-        except Exception:
-            target_enc_pretrained_dict = checkpoint["target_encoder"]
-        # --
-        target_enc_pretrained_dict = {k.replace('module.', ''): v for k, v in target_enc_pretrained_dict.items()}
-        for k, v in target_encoder.state_dict().items():
-            if k not in target_enc_pretrained_dict:
-                logger.info(f'key "{k}" could not be found in loaded state dict')
-            elif target_enc_pretrained_dict[k].shape != v.shape:
-                logger.info(f'key "{k}" is of different shape in model and loaded state dict')
-                target_enc_pretrained_dict[k] = v
-        msg = target_encoder.load_state_dict(target_enc_pretrained_dict, strict=False)
-        logger.info(f'loaded pretrained model with msg: {msg}')
-        print(target_encoder)
-
-        # Load predictor
-        try:
-            pred_pretrained_dict = checkpoint[pred_checkpoint_key]
-        except Exception:
-            pred_pretrained_dict = checkpoint['predictor']
-        # --
-        pred_pretrained_dict = {k.replace('module.', ''): v for k, v in pred_pretrained_dict.items()}
-        for k, v in predictor.state_dict().items():
-            if k not in pred_pretrained_dict:
-                logger.info(f'key "{k}" could not be found in loaded state dict')
-            elif pred_pretrained_dict[k].shape != v.shape:
-                logger.info(f'key "{k}" is of different shape in model and loaded state dict')
-                pred_pretrained_dict[k] = v
-        msg = predictor.load_state_dict(pred_pretrained_dict, strict=False)
-        logger.info(f'loaded pretrained model with msg: {msg}')
-        logger.info(f'loaded pretrained predictor from epoch: {checkpoint["epoch"]}\n path: {pretrained}')
-        print(predictor)
+        _load_module('target_encoder', target_encoder, pick(target_enc_checkpoint_key, 'target_encoder'), min_coverage)
+        _load_module('predictor', predictor, pick(pred_checkpoint_key, 'predictor'), min_coverage)
+        logger.info(f'loaded pretrained predictor from epoch: {checkpoint.get("epoch", "?")}\n path: {pretrained}')
 
     del checkpoint
-    return encoder,target_encoder, predictor
+    return encoder, target_encoder, predictor
 
 
 def init_model(
@@ -683,6 +703,7 @@ def init_model(
     custom_model_module=None,
     custom_model_kwargs=None,
     is_mae=False,
+    min_coverage=0.9,
 ):
     if custom_model_module is not None:
         # User-supplied builder (see evals/intuitive_physics/adapters/README.md).
@@ -694,7 +715,7 @@ def init_model(
         return load_pretrained(
             encoder=encoder, predictor=predictor, target_encoder=target_encoder,
             pretrained=pretrained, enc_checkpoint_key=enc_checkpoint_key,
-            pred_checkpoint_key=pred_checkpoint_key, is_mae=False)
+            pred_checkpoint_key=pred_checkpoint_key, is_mae=False, min_coverage=min_coverage)
 
     if is_mae:
 
@@ -765,5 +786,6 @@ def init_model(
         enc_checkpoint_key=enc_checkpoint_key,
         pred_checkpoint_key=pred_checkpoint_key,
         is_mae=is_mae,
+        min_coverage=min_coverage,
         )
     return encoder,target_encoder, predictor

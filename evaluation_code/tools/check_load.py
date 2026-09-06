@@ -33,9 +33,10 @@ def is_deterministic(key):
 
 def summarize(name, model, packed):
     """Compare a built module against the state_dict the eval would feed it."""
-    # eval.py strips 'module.' before loading; mirror that exactly (eval.py:604)
-    packed = {k.replace("module.", ""): v for k, v in packed.items()}
+    # mirror eval.py exactly: strip 'module.' and align the wrapper's 'backbone.' prefix
+    from evals.intuitive_physics.eval import align_state_dict_keys
     have = model.state_dict()
+    packed = align_state_dict_keys(packed, have.keys())
     deterministic = [k for k in have if k not in packed and is_deterministic(k)]
     missing = [k for k in have if k not in packed and not is_deterministic(k)]
     unexpected = [k for k in packed if k not in have]
