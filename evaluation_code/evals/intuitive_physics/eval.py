@@ -743,6 +743,14 @@ def init_model(
 
     encoder.to(device)
 
+    if pretrained is None:
+        # Chance-level control: leave every module at its random initialisation
+        # (this is what the paper's vit-*-random-N runs measure). Note the
+        # target_encoder is a deepcopy of the encoder above, so teacher and
+        # student are identical here, exactly as at the start of training.
+        logger.info('No checkpoint given -- all modules left randomly initialised')
+        return encoder, target_encoder, predictor
+
     encoder,target_encoder, predictor = load_pretrained(
         encoder=encoder,
         predictor=predictor,
