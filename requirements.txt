@@ -21,3 +21,5 @@ python-box
 scikit-image
 ftfy
 decord
+scikit-learn
+scipy

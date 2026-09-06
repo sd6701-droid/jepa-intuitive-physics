@@ -23,7 +23,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 for CONDA_SH in "$HOME/miniconda3/etc/profile.d/conda.sh" \
                 "/scratch/$USER/miniconda3/etc/profile.d/conda.sh"; do
-  [[ -f "$CONDA_SH" ]] && { source "$CONDA_SH" && conda activate "${CONDA_ENV:-base}" || true; break; }
+  [[ -f "$CONDA_SH" ]] && { source "$CONDA_SH" && conda activate "${CONDA_ENV:-intphys}" || true; break; }
 done
 
 export INTPHYS_DATA_ROOT="${INTPHYS_DATA_ROOT:-/scratch/sd6701/datasets}"
