@@ -47,7 +47,7 @@ data:
 normalize_targets: true            # set false if the predictor was trained on raw (un-layernormed) teacher tokens
 wandb:
   enabled: true
-  project: intphys-eval
+  project: rethinking-jepa
   entity: null                     # your W&B team/user, or null for default
   name: null                       # defaults to <write_tag>-<dataset>-<tag>
   group: salt_student
