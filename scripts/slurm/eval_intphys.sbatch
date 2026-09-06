@@ -20,8 +20,28 @@
 # Usage:
 #   mkdir -p /scratch/sd6701/jepa-intuitive-physics/logs/eval
 #   sbatch scripts/slurm/eval_intphys.sbatch                                   # student_intphys.yaml
+#   bash scripts/slurm/submit_eval_dual.sh                                     # same, queued on 2 accounts
 #   CONFIG=evals/intuitive_physics/configs/student_grasp.yaml sbatch --time=06:00:00 scripts/slurm/eval_intphys.sbatch
 set -euo pipefail
+
+# --- dual-account submission guard (see scripts/slurm/submit_eval_dual.sh) ---
+# The submitter queues this script twice under two accounts and writes both job
+# ids to $DUAL_GROUP_DIR/jobs. The first job to START takes an atomic lock
+# (mkdir) and cancels its sibling; the loser exits 0. A requeued winner keeps its
+# own lock (same SLURM_JOB_ID), so --requeue still works.
+if [[ -n "${DUAL_GROUP_DIR:-}" ]]; then
+  if mkdir "$DUAL_GROUP_DIR/lock" 2>/dev/null || [[ "$(cat "$DUAL_GROUP_DIR/winner" 2>/dev/null)" == "$SLURM_JOB_ID" ]]; then
+    echo "$SLURM_JOB_ID" > "$DUAL_GROUP_DIR/winner"
+    for _ in $(seq 1 30); do [[ -s "$DUAL_GROUP_DIR/jobs" ]] && break; sleep 2; done
+    for j in $(cat "$DUAL_GROUP_DIR/jobs" 2>/dev/null); do
+      [[ "$j" != "$SLURM_JOB_ID" ]] && { echo "dual: cancelling sibling job $j"; scancel "$j" || true; }
+    done
+    echo "dual: job $SLURM_JOB_ID (account ${SLURM_JOB_ACCOUNT:-?}) won the race"
+  else
+    echo "dual: sibling $(cat "$DUAL_GROUP_DIR/winner" 2>/dev/null) already running; exiting"
+    exit 0
+  fi
+fi
 
 export PATH="$HOME/.local/bin:$PATH"
 for CONDA_SH in "$HOME/miniconda3/etc/profile.d/conda.sh" \
