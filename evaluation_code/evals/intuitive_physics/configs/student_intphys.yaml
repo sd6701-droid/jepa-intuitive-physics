@@ -12,20 +12,21 @@ pretrain:
   checkpoint: student-latest.pth.tar
   write_tag: salt_student
 
-  # --- architecture (VERIFY against tools/inspect_checkpoint.py output) ---
-  model_name: vit_small            # ViT-S: embed 384, depth 12, heads 6 (vit_small_rope if RoPE)
+  # --- architecture (verified 2026-09-06 against the checkpoint's embedded
+  #     config.model and tools/inspect_checkpoint.py tensor shapes) ---
+  model_name: vit_small_rope       # p-salt config: use_rope true; eval derives RoPE from the name (eval.py:714)
   patch_size: 16
   tubelet_size: 1                  # student + teacher 8f00b836 both trained at tubelet 1 (16 temporal tokens, 3136 tok/clip)
   frames_per_clip: 16
   use_sdpa: true
-  use_silu: false
-  wide_silu: true
-  uniform_power: true
+  use_silu: false                  # p-salt: use_silu false, use_pred_silu false
+  wide_silu: false                 # p-salt: wide_silu false (inert while use_silu is false)
+  uniform_power: false             # p-salt: uniform_power false
   is_causal: false                 # bi-directional
   pred_is_causal: false            # bi-directional
-  pred_depth: 12                   # from p-salt config
-  pred_embed_dim: 384              # from p-salt config
-  pred_num_heads: 16               # from p-salt config (encoder itself has 6)
+  pred_depth: 12                   # verified against checkpoint config.model
+  pred_embed_dim: 384              # verified: predictor_embed (384, 384)
+  pred_num_heads: 16               # verified: config.model.pred_num_heads (encoder itself has 6)
 
   # --- plug in the p-salt predictor class instead of the repo's vit_predictor ---
   # Uncomment once adapters/salt_student.py::build_salt_predictor is filled in.
