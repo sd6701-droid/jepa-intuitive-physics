@@ -21,7 +21,7 @@
 #   mkdir -p /scratch/sd6701/jepa-intuitive-physics/logs/eval
 #   sbatch scripts/slurm/eval_intphys.sbatch                                   # student_intphys.yaml
 #   bash scripts/slurm/submit_eval_dual.sh                                     # same, queued on 2 accounts
-#   CONFIG=evals/intuitive_physics/configs/student_grasp.yaml sbatch --time=06:00:00 scripts/slurm/eval_intphys.sbatch
+#   CONFIG=evals/intuitive_physics/configs/grasp/student_salt.yaml sbatch --time=06:00:00 scripts/slurm/eval_intphys.sbatch
 set -euo pipefail
 
 # --- dual-account submission guard (see scripts/slurm/submit_eval_dual.sh) ---
@@ -52,7 +52,7 @@ done
 export WANDB_DIR="${WANDB_DIR:-/scratch/sd6701/jepa-intuitive-physics/logs/wandb}"; mkdir -p "$WANDB_DIR"
 export INTPHYS_DATA_ROOT="${INTPHYS_DATA_ROOT:-/scratch/sd6701/datasets}"
 REPO=/scratch/sd6701/jepa-intuitive-physics
-CONFIG="${CONFIG:-evals/intuitive_physics/configs/student_intphys.yaml}"
+CONFIG="${CONFIG:-evals/intuitive_physics/configs/intphys/student_salt.yaml}"
 
 cd "$REPO/evaluation_code"
 NGPU=$(python -c "import torch;print(torch.cuda.device_count())")

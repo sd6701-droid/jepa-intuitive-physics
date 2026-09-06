@@ -4,7 +4,7 @@ so the chance-level control is guaranteed to match the model it controls for
 (the paper's "vit-*-random-N" baselines).
 
     python tools/make_random_checkpoint.py \
-        --config evals/intuitive_physics/configs/random_intphys.yaml \
+        --config evals/intuitive_physics/configs/intphys/random.yaml \
         --out /scratch/sd6701/jepa-intuitive-physics/checkpoints/random_vit_s/student-latest.pth.tar \
         --seed 0
 

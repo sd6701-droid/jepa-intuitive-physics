@@ -1,0 +1,56 @@
+# GRASP level-2 eval -- SALT "causal proposed flex" ViT-S student + frozen SSv2 teacher + predictor (causal attention in encoder AND predictor).
+#
+# Checkpoint is produced by scripts/pack_student.sh from
+#   student+predictor: /scratch/sd6701/salt/p-salt/results/student_ssv2_causal_proposed_flex_tube1/checkpoints/e9434cb3/last/checkpoint.pth
+#   teacher          : /scratch/sd6701/salt/p-salt/results/teacher_ssv2/checkpoints/8f00b836/last/checkpoint.pth
+# and must contain keys: encoder, target_encoder, predictor, epoch.
+pretrain:
+  enc_checkpoint_key: encoder
+  pred_checkpoint_key: predictor
+  folder: /scratch/sd6701/jepa-intuitive-physics/checkpoints/student_ssv2_causal_proposed_flex_tube1/
+  checkpoint: student-latest.pth.tar
+  write_tag: salt_student_causal
+
+  # --- architecture (verified 2026-09-06 against this checkpoint's config.model: model_name vit_small, use_rope true, uniform_power false, use_silu false, wide_silu false, pred_depth 12, pred_num_heads 16, pred_embed_dim 384, tubelet_size 1, patch_size 16, teacher 8f00b836) ---
+  model_name: vit_small_rope       # p-salt use_rope true; eval derives RoPE from the name
+  patch_size: 16
+  tubelet_size: 1                  # student + teacher 8f00b836 both trained at tubelet 1
+  frames_per_clip: 16
+  use_sdpa: true
+  use_silu: false                  # p-salt: use_silu false, use_pred_silu false
+  wide_silu: false                 # p-salt: wide_silu false (inert while use_silu is false)
+  uniform_power: false             # p-salt: uniform_power false
+  # Causal attention here is SDPA's is_causal (modules.py:301) -- a token-level
+  # lower-triangular mask over the flattened token sequence, so a token also
+  # cannot see later spatial positions within its own frame. p-salt trained with
+  # attn_backend "flex" (FlexAttention); we deliberately do NOT reproduce that
+  # backend here (user's decision, 2026-09-06). The mask is applied identically
+  # to every causal student, so the paired comparisons stay valid.
+  is_causal: true              # causal encoder
+  pred_is_causal: true         # causal predictor
+  pred_depth: 12                   # config.model.pred_depth
+  pred_embed_dim: 384              # config.model.pred_embed_dim
+  pred_num_heads: 16               # config.model.pred_num_heads (encoder itself has 6)
+data:
+  batch_size: 1
+  resolution: 224
+  stride_sliding_window: 2
+  use_bfloat16: true
+  frames_per_clip: 16
+  context_lengths: [2,4,6,8,10]
+  frame_steps: 10
+  normalize_context: false
+normalize_targets: true            # set false if the predictor was trained on raw (un-layernormed) teacher tokens
+wandb:
+  enabled: true
+  project: rethinking-jepa
+  entity: null                     # your W&B team/user, or null for default
+  name: null                       # defaults to <write_tag>-<dataset>-<tag>
+  group: intuitive_physics_eval    # one group for every eval run, so all models/datasets compare in one view
+  tags: [vit_small, frozen_teacher, ssv2, causal, flex]
+  mode: online                     # or "offline" on nodes without internet (then: wandb sync)
+tag: salt_student_causal
+nodes: 1
+tasks_per_node: 1
+eval_name: intuitive_physics
+dataset: grasp

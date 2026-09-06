@@ -10,7 +10,7 @@ load -- so "loaded" means loaded, not merely "no error was raised".
 
 Usage:
     cd evaluation_code
-    python tools/check_load.py evals/intuitive_physics/configs/student_intphys.yaml
+    python tools/check_load.py evals/intuitive_physics/configs/intphys/student_salt.yaml
 """
 import argparse
 import os
@@ -64,7 +64,7 @@ def summarize(name, model, packed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("config", help="eval yaml (e.g. evals/intuitive_physics/configs/student_intphys.yaml)")
+    ap.add_argument("config", help="eval yaml (e.g. evals/intuitive_physics/configs/intphys/student_salt.yaml)")
     a = ap.parse_args()
 
     sys.path.insert(0, os.getcwd())
