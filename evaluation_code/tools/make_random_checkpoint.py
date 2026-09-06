@@ -17,6 +17,10 @@ config sets is_causal / pred_is_causal.
 import argparse
 import copy
 import os
+import sys
+
+# Make `src.*` importable when run as  python tools/make_random_checkpoint.py
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 import yaml
