@@ -1,0 +1,54 @@
+# PIPELINE CONTROL: the public V-JEPA ViT-L/16 (VideoMix2M) checkpoint from
+# github.com/facebookresearch/jepa, evaluated on IntPhys with the paper's own
+# settings. This model is known to score far above chance on IntPhys, so it
+# answers one question only: does the eval pipeline on this cluster produce
+# signal at all? If this run is near 50, the pipeline is broken; if it is high,
+# the SALT models' chance-level scores are a model/semantics problem.
+#
+# Checkpoint (no packing needed -- it already has encoder/target_encoder/predictor):
+#   mkdir -p /scratch/sd6701/jepa-intuitive-physics/checkpoints/vjepa_vitl16
+#   curl -L -o /scratch/sd6701/jepa-intuitive-physics/checkpoints/vjepa_vitl16/vitl16.pth.tar \
+#        https://dl.fbaipublicfiles.com/jepa/vitl16/vitl16.pth.tar
+pretrain:
+  enc_checkpoint_key: encoder
+  pred_checkpoint_key: predictor
+  folder: /scratch/sd6701/jepa-intuitive-physics/checkpoints/vjepa_vitl16/
+  checkpoint: vitl16.pth.tar
+  write_tag: vjepa_vitl16
+  # from jepa/configs/pretrain/vitl16.yaml
+  model_name: vit_large            # no RoPE in V-JEPA v1
+  patch_size: 16
+  tubelet_size: 2
+  frames_per_clip: 16
+  use_sdpa: true
+  use_silu: false
+  wide_silu: false
+  uniform_power: true
+  is_causal: false
+  pred_is_causal: false
+  pred_depth: 12
+  pred_embed_dim: 384
+  # pred_num_heads: null -> encoder's 16 heads, as in V-JEPA
+data:
+  batch_size: 1
+  resolution: 224
+  stride_sliding_window: 2
+  use_bfloat16: true
+  frames_per_clip: 16
+  context_lengths: [2,4,6,8,10]
+  frame_steps: 2
+  normalize_context: false
+normalize_targets: true
+wandb:
+  enabled: true
+  project: rethinking-jepa
+  entity: null
+  name: null
+  group: intuitive_physics_eval
+  tags: [vit_large, vjepa_public, pipeline_control]
+  mode: online
+tag: vjepa_vitl16
+nodes: 1
+tasks_per_node: 1
+eval_name: intuitive_physics
+dataset: intphys
