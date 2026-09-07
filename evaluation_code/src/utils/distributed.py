@@ -6,6 +6,7 @@
 #
 
 import os
+import socket
 
 import torch
 import torch.distributed as dist
@@ -27,7 +28,10 @@ def init_distributed(port=37127, rank_and_world_size=(None, None)):
         try:
             world_size = int(os.environ["SLURM_NTASKS"])
             rank = int(os.environ["SLURM_PROCID"])
-            os.environ["MASTER_ADDR"] = os.environ["HOSTNAME"]
+            # HOSTNAME is a bash variable that interactive shells export and
+            # batch shells often do not; falling through to the except below
+            # left the group uninitialised while still reporting success.
+            os.environ["MASTER_ADDR"] = os.environ.get("HOSTNAME") or socket.gethostname()
         except Exception:
             logger.info("SLURM vars not set (distributed training not available)")
             world_size, rank = 1, 0

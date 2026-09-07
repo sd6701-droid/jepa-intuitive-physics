@@ -180,6 +180,10 @@ def get_action_timestep(matched_clips):
 
 
 def batch_all_gather(x):
+    # Single rank, or no process group (see init_distributed's silent fallback):
+    # the gather is the identity, and calling into NCCL would raise instead.
+    if not (dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1):
+        return x
     x_list = FullGatherLayer.apply(x)
     return torch.cat(x_list, dim=0)
 

@@ -582,7 +582,12 @@ def extract_losses(
         lengths.append(l.size(-1))
     max_length = torch.tensor([max(lengths)]).to(device)
     #We need to sync the max lengths otherwise we can't gather the losses afterwards
-    dist.all_reduce(max_length, op=dist.ReduceOp.MAX)
+    # init_distributed() returns (1, 0) WITHOUT creating a process group whenever
+    # its setup throws -- notably when HOSTNAME is unset, which is normal in a
+    # batch shell. A collective then raises "Default process group has not been
+    # initialized". With one rank there is nothing to reduce, so skip it.
+    if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+        dist.all_reduce(max_length, op=dist.ReduceOp.MAX)
 
     all_losses = torch.concat(pad_tensors(all_losses,max_length.item()))
     all_labels = torch.concat(all_labels)
