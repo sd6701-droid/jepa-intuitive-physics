@@ -11,17 +11,28 @@ set -euo pipefail
 REPO=/scratch/sd6701/jepa-intuitive-physics
 ACCOUNTS="${ACCOUNTS:-torch_pr_230_tandon_priority torch_pr_230_tandon_advanced}"
 CONFIG="${CONFIG:-evals/intuitive_physics/configs/intphys/student_salt.yaml}"
+# GPU selection. eval_intphys.sbatch pins #SBATCH --constraint=h100; a command-line
+# option overrides a directive, so setting GPU here re-targets both jobs without
+# editing the sbatch. PARTITION is only needed when the GPU type lives outside the
+# default partition -- check with:  sinfo -o "%P %f %G %a" | sort -u
+GPU="${GPU:-a100}"
+PARTITION="${PARTITION:-}"
+# Name the job after the config (configs/<dataset>/<model>.yaml -> <dataset>_<model>)
+# so squeue says which eval is running and the logs, written as %x_%j, say so too.
+# Without this every run is called intphys_eval whatever config it was given.
+JOBNAME="$(basename "$(dirname "$CONFIG")")_$(basename "$CONFIG" .yaml)"
 GROUP="$(date +%Y%m%d_%H%M%S)_$$"
 GROUPDIR="$REPO/logs/eval/dual/$GROUP"
 mkdir -p "$GROUPDIR" "$REPO/logs/eval" "$REPO/logs/wandb"
 
 JOBS=()
 for ACC in $ACCOUNTS; do
-  JID=$(sbatch --parsable --account="$ACC" \
+  JID=$(sbatch --parsable --account="$ACC" --job-name="$JOBNAME" \
+        --constraint="$GPU" ${PARTITION:+--partition="$PARTITION"} \
         --export=ALL,DUAL_GROUP_DIR="$GROUPDIR",CONFIG="$CONFIG" \
         "$@" "$REPO/scripts/slurm/eval_intphys.sbatch")
   JID="${JID%%;*}"
-  echo "queued job $JID on $ACC"
+  echo "queued job $JID on $ACC  ($JOBNAME, gpu=$GPU${PARTITION:+ part=$PARTITION})"
   JOBS+=("$JID")
 done
 echo "${JOBS[*]}" > "$GROUPDIR/jobs"

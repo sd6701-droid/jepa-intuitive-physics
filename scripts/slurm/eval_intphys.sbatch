@@ -61,7 +61,10 @@ echo "host=$(hostname) gpus=$NGPU config=$CONFIG data=$INTPHYS_DATA_ROOT"
 echo "python=$(which python) conda_env=${CONDA_DEFAULT_ENV:-none}"
 # Preflight: fail fast (before touching the GPU) if the env is missing anything the eval imports.
 python - <<'PY' || { echo "preflight failed: run  pip install -r requirements.txt  in env ${CONDA_DEFAULT_ENV:-?}"; exit 1; }
-import importlib, sys
+# importlib.util is a submodule: `import importlib` alone does not bind it, and
+# reaching for it raises AttributeError -- which the preflight would then report
+# as "packages missing" no matter what is installed.
+import importlib.util, sys
 missing = [m for m in ("torch","torchvision","decord","einops","yaml","sklearn","scipy","pandas","timm","cv2","PIL","wandb","submitit","skimage")
            if importlib.util.find_spec(m) is None]
 if missing:
